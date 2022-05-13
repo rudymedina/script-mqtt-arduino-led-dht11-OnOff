@@ -18,17 +18,30 @@
 #include <Adafruit_Sensor.h> //Library for Adafruit sensors , we are using for DHT
 
 
-#define DHTPIN D2
+#define pin1 D2
 #define pin2 D4
 #define LED D3
 
+unsigned long previousMillis = 0;
+unsigned long currentMillis = 0;
+unsigned long interval = 6000;
+unsigned long interval2 = 60000;
+unsigned long interval3 = 60000;
+unsigned long interval4 = 60000;
+unsigned long interval5 = 60000;
+
+unsigned long prevTime_T1 = millis();
+unsigned long prevTime_T2 = millis();
+unsigned long prevTime_T3 = millis(); 
+unsigned long prevTime_T4 = millis(); 
+unsigned long prevTime_T5 = millis();
 
 TFT_eSPI tft; //initialize TFT LCD
 TFT_eSprite spr = TFT_eSprite(&tft); //initialize sprite buffer
 
 //DHT parameters
-#define DHTTYPE    DHT11     // DHT 11
-DHT_Unified dht(DHTPIN, DHTTYPE);
+DHT dht(pin1, DHT11);
+
 uint32_t delayMS;
 
 //MQTT Credentials
@@ -39,10 +52,6 @@ const char* mqttUserName = "";  // MQTT username
 const char* mqttPwd = "";  // MQTT password
 const char* clientID = "username0001"; // client id username+0001
 const char* topic = "Dar/Mal"; //publish topic
-
-//parameters for using non-blocking delay
-unsigned long previousMillis = 0;
-const long interval = 5000;
 
 String msgStr = "";      // MQTT message buffer
 
@@ -80,7 +89,7 @@ void setup_wifi() {
     Serial.println("Connected to the WiFi network");
     Serial.print("IP Address: ");
     Serial.println (WiFi.localIP()); // prints out the device's IP address
-
+  
 }
 
 void reconnect() {
@@ -135,10 +144,6 @@ void setup() {
   Serial.begin(115200);
   // Initialize device.
   dht.begin();
-  // get temperature sensor details.
-  sensor_t sensor;
-  dht.temperature().getSensor(&sensor);
-  dht.humidity().getSensor(&sensor);
 
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
@@ -156,36 +161,26 @@ void loop() {
   }
   client.loop();
 
-  unsigned long currentMillis = millis(); //read current time
+  unsigned long currentTime = millis();
 
-  if (currentMillis - previousMillis >= interval) { //if current time - last time > 5 sec
-    previousMillis = currentMillis;
+ if (currentTime - prevTime_T1 > interval) {
+    readDht01();
+    prevTime_T1 = currentTime;
+    }
+    
+    
 
-    //read temp and humidity
-    sensors_event_t event;
-    dht.temperature().getEvent(&event);
+  }
 
-
-    if (isnan(event.temperature)) {
-      Serial.println(F("Error reading temperature!"));
-    }
-    else {
-      Serial.print(F("Temperature: "));
-      temp = event.temperature;
-      Serial.print(temp);
-      Serial.println(F("°C"));
-    }
-    // Get humidity event and print its value.
-    dht.humidity().getEvent(&event);
-    if (isnan(event.relative_humidity)) {
-      Serial.println(F("Error reading humidity!"));
-    }
-    else {
-      Serial.print(F("Humidity: "));
-      hum = event.relative_humidity;
-      Serial.print(hum);
-      Serial.println(F("%"));
-    }
+  void readDht01(){
+    temp = dht.readTemperature();
+    hum = dht.readHumidity();
+    Serial.print("Temperatura T0T1: ");
+    Serial.print(temp);
+    Serial.println(" ºC.");
+    Serial.print("Humedad T0H1: ");
+    Serial.print(hum);
+    Serial.println(" %.");
 
     msgStr = "{\"action\": \"notification/insert\",\"deviceId\": \"s3s9TFhT9WbDsA0CxlWeAKuZykjcmO6PoxK6\",\"notification\":{\"notification\": \"temperature\",\"parameters\":{\"temp0\":" + String(temp) + ",\"humi0\":" + String(hum) + "}}}";
     byte arrSize = msgStr.length() + 1;
@@ -197,7 +192,5 @@ void loop() {
     client.publish(topic, msg);
     msgStr = "";
     delay(50);
-
-  }
-
-}
+    
+    }
