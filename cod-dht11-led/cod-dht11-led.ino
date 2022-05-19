@@ -15,6 +15,7 @@
 #define tierra1 A4 //22
 #define pin1 D2 //16
 #define pin2 D3 //18
+#define nivel BCM8 // 24 para medir el nivel de agua
 #define CANAL1 BCM4 //7
 #define CANAL2 BCM0 //27
 #define CANAL3 BCM19 //35
@@ -49,7 +50,7 @@ unsigned long prevTime_T6 = millis();
 unsigned long prevTime_T7 = millis();
 unsigned long prevTime_T8 = millis();
 unsigned long prevTime_T9 = millis();
-
+unsigned long prevTime_T10 = millis();
 
 TFT_eSPI tft; //initialize TFT LCD
 TFT_eSprite spr = TFT_eSprite(&tft); //initialize sprite buffer
@@ -64,9 +65,9 @@ unsigned char response[9];
 uint32_t delayMS;
 
 // Configuraciones del sistema----------------------
-#define WLAN_SSID       "Medina" 
-#define WLAN_PASS       "belgorod25" // OKM690wsx
-#define MQTT_SERVER      "35.238.225.243" 
+#define WLAN_SSID       "" 
+#define WLAN_PASS       "" // OKM690wsx
+#define MQTT_SERVER      "" 
 #define MQTT_SERVERPORT  1883
 #define MQTT_USERNAME    ""
 #define MQTT_KEY         ""
@@ -132,6 +133,8 @@ void setup() {
    mqtt.subscribe(&canal5);
    mqtt.subscribe(&slider);
    pinMode(WIO_LIGHT, INPUT);
+   pinMode(nivel, INPUT);//Configuro en nivel de agua como entrada
+
 
    Serial.begin(115200);
    Serial.println("*******Dary Malinovky*******");
@@ -205,8 +208,12 @@ void loop() {
     prevTime_T8 = currentTime;
     }
   if (currentTime - prevTime_T9 > interval) {
-    Serial.println("______________________________________");
+    NivelBonba();
     prevTime_T9 = currentTime;
+    }
+  if (currentTime - prevTime_T10 > interval) {
+    Serial.println("______________________________________");
+    prevTime_T10 = currentTime;
     }
   checkWifi();
   reconnect();
@@ -322,9 +329,11 @@ void leerhum1() {
   Serial.println(" %.");
   temp_1_hdt_1.publish(temp1);
   hum_1_hdt_1.publish(hum1);  
-  if(temp1 >15){
+  if(temp1 >37){
+    Serial.println("Canal3 ventana = ON :");
     digitalWrite(CANAL3, LOW);
     }else{
+     Serial.println("Canal3 ventana = OFF :");
     digitalWrite(CANAL3, HIGH);
       }
 }
@@ -378,9 +387,11 @@ void LeerLuz_0() {
   Serial.println(valorLDR0);
   luz_0.publish(valorLDR0);
   if(valorLDR0 < 150){
+    Serial.println("Canal2 Luz = ON :");
     digitalWrite(CANAL2, LOW);
   }
   else{
+   Serial.println("Canal2 luz = OFF :");
    digitalWrite(CANAL2, HIGH);
   }
 }
@@ -428,6 +439,11 @@ void leerco2() {
   spr.pushSprite(100, 160);
   spr.deleteSprite(); 
 }  
+void NivelBonba(){
+  int SensorNivel = digitalRead(nivel); //Leo lo que marca el nivel de agua
+  Serial.println("ESTADO DE TANQUE DE AGUA");
+  Serial.println(SensorNivel);
+  }
 void connectWiFi() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
