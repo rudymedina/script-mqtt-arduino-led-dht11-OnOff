@@ -37,7 +37,7 @@ float tempC;
 
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
-unsigned long interval = 6000;
+unsigned long interval = 3000;
 unsigned long interval2 = 60000;
 
 unsigned long prevTime_T1 = millis();
@@ -64,9 +64,9 @@ unsigned char response[9];
 uint32_t delayMS;
 
 // Configuraciones del sistema----------------------
-#define WLAN_SSID       "" 
-#define WLAN_PASS       "" // OKM690wsx
-#define MQTT_SERVER      "..." 
+#define WLAN_SSID       "Medina" 
+#define WLAN_PASS       "belgorod25" // OKM690wsx
+#define MQTT_SERVER      "35.238.225.243" 
 #define MQTT_SERVERPORT  1883
 #define MQTT_USERNAME    ""
 #define MQTT_KEY         ""
@@ -117,12 +117,22 @@ void setup() {
    pinMode(CANAL4, OUTPUT);
    pinMode(CANAL5, OUTPUT);
    pinMode(PWMOUT, OUTPUT);
+   //Apagamos todos los relays
+   digitalWrite(CANAL1, HIGH); 
+   digitalWrite(CANAL2, HIGH); 
+   digitalWrite(CANAL3, HIGH); 
+   digitalWrite(CANAL4, HIGH);
+   digitalWrite(CANAL5, HIGH); 
+   digitalWrite(PWMOUT, HIGH);
+
    mqtt.subscribe(&canal1);
    mqtt.subscribe(&canal2);
    mqtt.subscribe(&canal3);
    mqtt.subscribe(&canal4);
    mqtt.subscribe(&canal5);
    mqtt.subscribe(&slider);
+   pinMode(WIO_LIGHT, INPUT);
+
    Serial.begin(115200);
    Serial.println("*******Dary Malinovky*******");
    connectWiFi();
@@ -312,6 +322,11 @@ void leerhum1() {
   Serial.println(" %.");
   temp_1_hdt_1.publish(temp1);
   hum_1_hdt_1.publish(hum1);  
+  if(temp1 >15){
+    digitalWrite(CANAL3, LOW);
+    }else{
+    digitalWrite(CANAL3, HIGH);
+      }
 }
 void leerhum2() { 
     temp2 = dht1.readTemperature();
@@ -330,12 +345,17 @@ void LeerMoisture0() {
     Serial.print("Soil Moisture _0  = " );
     Serial.println(suelo0);
     tierra_0.publish(suelo0);
-    if(suelo0 >= 0 & suelo0 < 200){
-        Serial.println("Sensor en suelo seco");  
-    } else if(suelo0 > 200 & suelo0 <= 400){
+    if(suelo0 >= 0 & suelo0 < 100){
+        Serial.println("Sensor en suelo seco");
+        Serial.println("On POMPA");
+        digitalWrite(CANAL1, LOW);
+  
+    } else if(suelo0 > 100 & suelo0 <= 199){
         Serial.println("Sensor en suelo húmedo");
-    }else if(suelo0 > 401){
+    }else if(suelo0 > 199){
         Serial.println("Sensor en agua");
+        Serial.println("Off POMPA");
+        digitalWrite(CANAL1, HIGH);
     }
 }
 void LeerMoisture1() {
@@ -353,16 +373,23 @@ void LeerMoisture1() {
     }
 }
 void LeerLuz_0() { 
-  valorLDR0 = analogRead(pinLDR0);
+  valorLDR0 = analogRead(WIO_LIGHT);
   Serial.print("luz_0 = ");
   Serial.println(valorLDR0);
   luz_0.publish(valorLDR0);
+  if(valorLDR0 < 150){
+    digitalWrite(CANAL2, LOW);
+  }
+  else{
+   digitalWrite(CANAL2, HIGH);
+  }
 }
 void LeerLuz_1() { 
   valorLDR1 = analogRead(pinLDR1);
   Serial.print("luz_1 = ");
   Serial.println(valorLDR1);
   luz_1.publish(valorLDR1);
+  
 }
 void leerco2() { 
   myCo2.write(request, 9);
