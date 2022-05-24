@@ -10,29 +10,41 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "SHT31.h"
+#define ISR_SERVO_DEBUG             1
+#include "SAMD_ISR_Servo.h"
+#define USING_SAMD_TIMER            TIMER_TC3
+#define MIN_MICROS        1000
+#define MAX_MICROS        2000 
 
 #define tierra0 A0 //13
-#define tierra1 A4 //22
+//#define tierra1 A4 //22
 #define pin1 D2 //16
 #define pin2 D3 //18
 #define nivel BCM8 // 24 para medir el nivel de agua
-#define CANAL1 BCM4 //7
-#define CANAL2 BCM0 //27
-#define CANAL3 BCM19 //35
-#define CANAL4 BCM1 //28
+#define CANAL1 BCM4 //7  e1  ACTIVAR MOTOR
+#define CANAL2 BCM0 //27  i1  CONTROL PIN 1 POR MOTOR VENTANA
+#define CANAL3 BCM19 //35 i2  CONTROL PIN 2 POR MOTOR VENTANA
+#define CANAL4 BCM1 //28      CONTROL DE CALEFACCION
 #define CANAL5 BCM4 //7
 
+#define SERVO_PIN_1 A1 //15
+#define SERVO_PIN_2 A4 //22
+#define SERVO_PIN_3 A7 //16
+
 #define PWMOUT BCM17
-#define pinLDR0 D5 //32
-#define pinLDR1 D7 //36
+#define pinLDR0 A5 //32
+//#define pinLDR1 A7 //36
 #define RX BCM14// Rx=10  //8
 #define TX BCM15//TX=8    //10
 
+int position;      // position in degrees
 float temp0, hum0, temp1, hum1, temp2, hum2;
 float co2;
 float valorLDR0,valorLDR1;
 float suelo0, suelo1;
-
+const int motor_encender = 25; // ocaso valor minimo de luz para el cual haremos funcionar el sistema
+const int temp_minima = 20; //rango de luz deseado (salida del sistema) éstos valores los debe asignar el usuario de acuerdo a su necesidad y situación.
+const int temp_maxima = 24;
 int ndispositivos = 0;
 float tempC;
 
@@ -65,26 +77,26 @@ unsigned char response[9];
 uint32_t delayMS;
 
 // Configuraciones del sistema----------------------
-#define WLAN_SSID       "" 
-#define WLAN_PASS       "" // OKM690wsx
-#define MQTT_SERVER      "" 
+#define WLAN_SSID       "Medina" 
+#define WLAN_PASS       "belgorod25" // OKM690wsx
+#define MQTT_SERVER      "35.238.225.243" 
 #define MQTT_SERVERPORT  1883
 #define MQTT_USERNAME    ""
 #define MQTT_KEY         ""
-#define MQTT_PUBLIC_CO2      "DarMal/Karinskoe_T2/T1C0"
-#define MQTT_PUBLIC_TEMP_0   "DarMal/Karinskoe_T2/T1T0" 
-#define MQTT_PUBLIC_HUMI_0   "DarMal/Karinskoe_T2/T1H0" 
-#define MQTT_PUBLIC_TEMP_1   "DarMal/Karinskoe_T2/T1T1"
-#define MQTT_PUBLIC_HUMI_1   "DarMal/Karinskoe_T2/T1H1"
-#define MQTT_PUBLIC_TEMP_2   "DarMal/Karinskoe_T2/T1T2"
-#define MQTT_PUBLIC_HUMI_2   "DarMal/Karinskoe_T2/T1H2"
-#define MQTT_PUBLIC_TIERRA_0 "DarMal/Karinskoe_T2/T1T2"
-#define MQTT_PUBLIC_TIERRA_1 "DarMal/Karinskoe_T2/T1M1"
-#define MQTT_PUBLIC_LUZ_0    "DarMal/Karinskoe_T2/T1L0"
-#define MQTT_PUBLIC_LUZ_1    "DarMal/Karinskoe_T2/T1L1"
-#define MQTT_PUBLIC_SERVO_0  "DarMal/Karinskoe_T2/T1S0"
-#define MQTT_PUBLIC_SERVO_1  "DarMal/Karinskoe_T2/T1S1"
-#define MQTT_PUBLIC_SERVO_2  "DarMal/Karinskoe_T2/T1S2"
+#define MQTT_PUBLIC_CO2      "DarMal/Karinskoe_T5/T5C0"
+#define MQTT_PUBLIC_TEMP_0   "DarMal/Karinskoe_T5/T5T0" 
+#define MQTT_PUBLIC_HUMI_0   "DarMal/Karinskoe_T5/T5H0" 
+#define MQTT_PUBLIC_TEMP_1   "DarMal/Karinskoe_T5/T5T1"
+#define MQTT_PUBLIC_HUMI_1   "DarMal/Karinskoe_T5/T5H1"
+#define MQTT_PUBLIC_TEMP_2   "DarMal/Karinskoe_T5/T5T2"
+#define MQTT_PUBLIC_HUMI_2   "DarMal/Karinskoe_T5/T5H2"
+#define MQTT_PUBLIC_TIERRA_0 "DarMal/Karinskoe_T5/T5T2"
+#define MQTT_PUBLIC_TIERRA_1 "DarMal/Karinskoe_T5/T5M1"
+#define MQTT_PUBLIC_LUZ_0    "DarMal/Karinskoe_T5/T5L0"
+#define MQTT_PUBLIC_LUZ_1    "DarMal/Karinskoe_T5/T5L1"
+#define MQTT_PUBLIC_SERVO_0  "DarMal/Karinskoe_T5/T5S0"
+#define MQTT_PUBLIC_SERVO_1  "DarMal/Karinskoe_T5/T5S1"
+#define MQTT_PUBLIC_SERVO_2  "DarMal/Karinskoe_T5/T5S2"
 
 // conexion y rutamiento de topics para los sensores--------
 WiFiClient client;
@@ -104,13 +116,23 @@ Adafruit_MQTT_Publish servo_0 = Adafruit_MQTT_Publish(&mqtt, MQTT_PUBLIC_SERVO_0
 Adafruit_MQTT_Publish servo_1 = Adafruit_MQTT_Publish(&mqtt, MQTT_PUBLIC_SERVO_1);
 Adafruit_MQTT_Publish servo_2 = Adafruit_MQTT_Publish(&mqtt, MQTT_PUBLIC_SERVO_2);
 //-----------------------------------------------------------------------------------------------
-Adafruit_MQTT_Subscribe canal1 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal1/onoff");
-Adafruit_MQTT_Subscribe canal2 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal2/onoff");
-Adafruit_MQTT_Subscribe canal3 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal3/onoff");
-Adafruit_MQTT_Subscribe canal4 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal4/onoff");
-Adafruit_MQTT_Subscribe canal5 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal5/onoff");
-Adafruit_MQTT_Subscribe slider = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T2/canal6/slider");
+Adafruit_MQTT_Subscribe canal1 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal1/onoff");
+Adafruit_MQTT_Subscribe canal2 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal2/onoff");
+Adafruit_MQTT_Subscribe canal3 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal3/onoff");
+Adafruit_MQTT_Subscribe canal4 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal4/onoff");
+Adafruit_MQTT_Subscribe canal5 = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal5/onoff");
+Adafruit_MQTT_Subscribe slider = Adafruit_MQTT_Subscribe(&mqtt, MQTT_USERNAME "DarMal/Karinskoe_T5/canal6/slider");
 void MQTT_connect();
+typedef struct
+{
+  int     servoIndex;
+  uint8_t servoPin;
+} ISR_servo_t;
+#define NUM_SERVOS            3
+ISR_servo_t ISR_servo[] =
+{
+  { -1, SERVO_PIN_1 }, { -1, SERVO_PIN_2 }, { -1, SERVO_PIN_3 }
+};
 void setup() {
    pinMode(CANAL1, OUTPUT);
    pinMode(CANAL2, OUTPUT);
@@ -171,6 +193,7 @@ void setup() {
   tft.drawString("%", 215,100);
   tft.drawString("PPM", 200,150);
   tft.drawFastHLine(0,140,320,TFT_GREEN); //draw horizontal line
+  servoSetup();
 } 
 void loop() {
   unsigned long currentTime = millis();
@@ -191,17 +214,9 @@ void loop() {
     LeerMoisture0();
     prevTime_T4 = currentTime;
     }
-  if (currentTime - prevTime_T5 > interval) {
-    LeerMoisture1();
-    prevTime_T5 = currentTime;
-    }
   if (currentTime - prevTime_T6 > interval) {
     LeerLuz_0();
     prevTime_T6 = currentTime;
-    }
-  if (currentTime - prevTime_T7 > interval) {
-    LeerLuz_1();
-    prevTime_T7 = currentTime;
     }
   if (currentTime - prevTime_T8 > interval) {
     leerco2();
@@ -217,6 +232,9 @@ void loop() {
     }
   checkWifi();
   reconnect();
+  suscribirCanal();
+}
+void suscribirCanal() {
   Adafruit_MQTT_Subscribe *subscription;
   while ((subscription = mqtt.readSubscription(5000))) {
     // Check if its the onoff button feed
@@ -286,8 +304,8 @@ void loop() {
   // ping the server to keep the mqtt connection alive
   if(! mqtt.ping()) {
     mqtt.disconnect();
-  } 
-}
+  }
+  }
 void leerhum0() {  
   temp0 = sht31.getTemperature();
   hum0 = sht31.getHumidity();
@@ -329,7 +347,7 @@ void leerhum1() {
   Serial.println(" %.");
   temp_1_hdt_1.publish(temp1);
   hum_1_hdt_1.publish(hum1);  
-  if(temp1 >37){
+  if(temp1 >30){
     Serial.println("Canal3 ventana = ON :");
     digitalWrite(CANAL3, LOW);
     }else{
@@ -367,20 +385,6 @@ void LeerMoisture0() {
         digitalWrite(CANAL1, HIGH);
     }
 }
-void LeerMoisture1() {
-    suelo1 = analogRead(tierra1);
-    Serial.print("Soil Moisture _1  = " );
-    Serial.println(suelo1);
-    tierra_1.publish(suelo1);
-
-    if(suelo1 >= 0 & suelo1 < 200){
-        Serial.println("Sensor en suelo seco");  
-    } else if(suelo1 > 200 & suelo1 <= 400){
-        Serial.println("Sensor en suelo húmedo");
-    }else if(suelo1 > 401){
-        Serial.println("Sensor en agua");
-    }
-}
 void LeerLuz_0() { 
   valorLDR0 = analogRead(WIO_LIGHT);
   Serial.print("luz_0 = ");
@@ -394,13 +398,6 @@ void LeerLuz_0() {
    Serial.println("Canal2 luz = OFF :");
    digitalWrite(CANAL2, HIGH);
   }
-}
-void LeerLuz_1() { 
-  valorLDR1 = analogRead(pinLDR1);
-  Serial.print("luz_1 = ");
-  Serial.println(valorLDR1);
-  luz_1.publish(valorLDR1);
-  
 }
 void leerco2() { 
   myCo2.write(request, 9);
@@ -502,6 +499,7 @@ void connectMQTT() {
 
 }
 void reconnect() {
+ 
   int8_t ret;
   // Stop if already connected.
   if (mqtt.connected()) {
@@ -520,4 +518,77 @@ void reconnect() {
          NVIC_SystemReset();
        }
   }
+}
+void servoSetup() {  
+  for (int index = 0; index < NUM_SERVOS; index++)
+  {
+    pinMode(ISR_servo[index].servoPin, OUTPUT);
+    digitalWrite(ISR_servo[index].servoPin, LOW);
+  }
+  Serial.begin(115200);
+  Serial.println(F("Servos ON "));
+  // SAMD51 always uses TIMER_TC3
+  SAMD_ISR_Servos.useTimer(USING_SAMD_TIMER);
+  for (int index = 0; index < NUM_SERVOS; index++)
+  {
+    ISR_servo[index].servoIndex = SAMD_ISR_Servos.setupServo(ISR_servo[index].servoPin, MIN_MICROS, MAX_MICROS);
+    if (ISR_servo[index].servoIndex != -1)
+    {
+      Serial.print(F("Setup OK Servo index = ")); 
+      Serial.println(ISR_servo[index].servoIndex);
+    }
+    else
+    {
+      Serial.print(F("Setup Failed Servo index = ")); 
+      Serial.println(ISR_servo[index].servoIndex);
+    }
+  }
+  SAMD_ISR_Servos.setReadyToRun();
+}
+void printServoInfo(int indexServo){  
+
+  Serial.print(F("Servo ID = "));
+  Serial.print(indexServo);
+  Serial.print(F(", act. pos. (deg) = "));
+  Serial.print(SAMD_ISR_Servos.getPosition(ISR_servo[indexServo].servoIndex) );
+  Serial.print(F(", pulseWidth (us) = "));
+  Serial.println(SAMD_ISR_Servos.getPulseWidth(ISR_servo[indexServo].servoIndex));
+}
+void servo(){
+  position = 0;
+  Serial.println(F("Ventanas 0 degree"));
+  for (int index = 0; index < NUM_SERVOS; index++)
+  {
+    SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
+    printServoInfo(index);
+  }
+  // waits 5s between test
+  delay(5000);
+
+  position = 90;
+  Serial.println("___________________________________________");
+  Serial.println(F("Abriendo ventanas"));
+
+  for (int index = 0; index < NUM_SERVOS; index++)
+  {
+    SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
+    printServoInfo(index);
+  }
+  
+  // waits 5s between test
+  delay(5000);
+  Serial.println("___________________________________________");
+  Serial.println(F("Cerrando Ventanas"));
+  
+  for (position = 0; position <= 180; position += 5)
+  {
+    for (int index = 0; index < NUM_SERVOS; index++)
+    {
+      SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
+    }
+    // waits 0.1s for the servo to reach the position
+    delay(100);
+  }
+  // waits 5s between test
+  delay(5000);
 }
