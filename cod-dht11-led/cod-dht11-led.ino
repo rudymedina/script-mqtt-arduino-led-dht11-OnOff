@@ -233,6 +233,7 @@ void loop() {
   checkWifi();
   reconnect();
   suscribirCanal();
+  servo();
 }
 void suscribirCanal() {
   Adafruit_MQTT_Subscribe *subscription;
@@ -556,39 +557,40 @@ void printServoInfo(int indexServo){
 }
 void servo(){
   position = 0;
-  Serial.println(F("Ventanas 0 degree"));
+  //if(valorLDR0 < motor_encender){
+ if(valorLDR0 > temp_minima && valorLDR0 < temp_maxima) {
+  Serial.println("___________________________________________");
+  Serial.println(F("****Cerrando ventanas****"));
   for (int index = 0; index < NUM_SERVOS; index++)
   {
     SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
     printServoInfo(index);
   }
-  // waits 5s between test
   delay(5000);
-
+  }
+  //else{
+  if(valorLDR0 > temp_minima && valorLDR0 > temp_maxima) {
   position = 90;
   Serial.println("___________________________________________");
-  Serial.println(F("Abriendo ventanas"));
+  Serial.println(F("****Abriendo ventanas****"));
 
   for (int index = 0; index < NUM_SERVOS; index++)
   {
     SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
     printServoInfo(index);
   }
-  
-  // waits 5s between test
   delay(5000);
-  Serial.println("___________________________________________");
-  Serial.println(F("Cerrando Ventanas"));
-  
-  for (position = 0; position <= 180; position += 5)
-  {
-    for (int index = 0; index < NUM_SERVOS; index++)
-    {
-      SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
-    }
-    // waits 0.1s for the servo to reach the position
-    delay(100);
   }
-  // waits 5s between test
+  else{
+  position = 0;
+  Serial.println("___________________________________________");
+  Serial.println(F("****CIERRE****"));
+
+  for (int index = 0; index < NUM_SERVOS; index++)
+  {
+    SAMD_ISR_Servos.setPosition(ISR_servo[index].servoIndex, position );
+    printServoInfo(index);
+  }
   delay(5000);
+  }
 }
